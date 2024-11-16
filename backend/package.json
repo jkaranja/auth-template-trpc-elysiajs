@@ -1,0 +1,29 @@
+{
+  "name": "backend",
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "start": "bun src/server.ts",
+    "lint": "eslint . --ext .ts",
+    "eslint:fix": "eslint --fix",
+    "client": "npm run dev --prefix ../frontend",
+    "dev": "concurrently \" npm run client\" \" npm start\"",
+    "migrate": "prisma migrate dev",
+    "evolve": "prisma db push",
+    "generate": "prisma generate"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "@trpc/client": "^11.0.0-rc.638",
+    "@trpc/server": "^11.0.0-rc.638",
+    "install": "^0.13.0",
+    "prisma": "^5.22.0",
+    "zod": "^3.23.8"
+  }
+}

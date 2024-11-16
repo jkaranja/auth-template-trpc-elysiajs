@@ -1,0 +1,174 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+//sources for models: https://www.prisma.io/docs/reference/api-reference/prisma-schema-reference#default
+//https://www.prisma.io/docs/concepts/components/prisma-schema/data-model#type-modifiers
+
+//data models/Prisma models-> defines your application models
+//model name must start with a letter and spelled in PascalCase (you can use @map to match db model/fields names)
+//Map to the tables/collections
+//Form the foundation of the queries used with generated Prisma Client API
+//Prisma Client provides generated type definitions for your models and any variations of them to make database access entirely type safe.
+//
+//field Name -> must start with letter & spelled in camelCase
+//field Type ->can be scalar type(includes enums) or model type(field is then = relation field)
+//model must have at least one unique field marked with either: @unique, @@unique, @id, or @@id
+//Attributes ->Attributes (including native database type attributes - type attributes) modify the behavior of fields or model blocks. eg @default('hello')
+//type attributes describe the underlying database type & are specific to that db eg @db.ObjectId -> see docs: 'Prisma schema reference'
+//Attribute functions are used inside eg @default(autoincrement())
+//type modifiers: modify field type, They are 2: []  Makes a field a list, ?  Make a field optional//can't combine both(optional lists not supported)
+
+//embedded docs in mongodb is supported with 'Composite types' eg field as an object//only when using mongodb//use json for other dbs
+model User {
+  id                          String    @id @default(uuid()) //@id field is not optional(either pass value or add @default) and cannot be defined on a relation field. A model can only have one field marked with @id. id fields are unique. In mongoDb, every model must define @id field(or  @db.ObjectId) & mapped with @map("_id")
+  // id    Int @id @default(autoincrement()) //if you want an auto incremented number
+  //id   String  @db.ObjectId  @map("_id") @default(auto()) if using mongoDb (To use an ObjectId as your model id, @db.ObjectId type attribute is mandatory. @default(auto()) generates a default ObjectId if none is passed)
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+  email                       String    @unique //@map("user_email")//you can map email to user_email field in db
+  username                    String // @db.VarChar(255)->to set length-see suported Native type attributes per db
+  password                    String
+  phoneNumber                 String?
+  profileUrl                  String?
+  roles                       Role[]    @default([USER]) //enum //supported natively in pg/mysql but enforced at Prisma level in MongoDB
+  newEmail                    String?
+  isVerified                  Boolean   @default(false)
+  verifyEmailToken            String?   @unique
+  resetPasswordToken          String?   @unique
+  //for numbers, use Int for a number less than 2147483647( date.now() is bigger, use DateTime)
+  //Don't use BigInt for large numbers, else res.json(resultsWithBigInitField) will throw "Do not know how to serialize a BigInt" error
+  //This is 'cause JSON.stringify() can't serialize the BigInit field value, BigInit is not a number
+  //use a string(then parseInt(string) when needed) or if it's date use DateTime
+  resetPasswordTokenExpiresAt DateTime? //BigInt? // Int = int4= 32-bit interger(max value= 2147483647), BigInt= int8, 64 bit interger(max value = 9223372036854775807)//use BigInt to support large numbers else error while saving "unable to fit integer value into an int4"
+  //relation is a connection between two models in the Prisma schema.
+  //At a Prisma level, a connection between two models is always represented by a relation field on each side of the relation.
+  //1.One-to-one relations(1-1)-> relations where at most one record can be connected on both sides of the relation.  //user can only have one profile and vice versa
+  //the inverse side that doesn't store the foreign key
+  profile                     Profile? //Relation field-> define connections between models at the Prisma level and do not exist in the database. They are relation fields since their types are not scalar types but model types
+  //user can have zero profiles or one profile
+  //this side without relation scalar field must be optional
+
+  //2. One-to-many (1-n) relations -> where one record on one side of the relation can be connected to zero or more records on the other side.
+  //a user can have zero or more notes (altho there is no ?, notes field is optional)
+  notes Note[] //does not exist in db// This list side of a 1-n relation is always mandatory(no '?').
+
+  //@@map("users") //you can map 'User' model to users table in db (i.e if different)//not needed
+}
+
+model Profile {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now()) //default value can be @default('hello' | 3 | ["2", 4], funtion() )
+  updatedAt DateTime @updatedAt
+  gender    String
+  address   String   @db.VarChar(255) //max 255 characters //varchar is 8-bit(bit = 0 or 1) binary number //255 is the maximum value of a 8 bit integer : 11111111 = 255 (2^8 - 1, We subtract one because numbers in computers begin from 0)
+  bio       String
+  //1. Inverse side-> One-to-One relation(1-1)->side that is storing the foreign key
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade) //annotated relation field( as it has @relation attribute. Doesn't exist in db)
+  userId    String?  @unique // relation scalar field (must be referenced inside `@relation` attribute above. Field type must match type of referenced field type) //it is the foreign key that connects Profile and User & exists in db. Referenced field(can be any field) must be @unique or be a model Id to guarantee that there is only a single User connected to each Profile.
+  //A scalar field becomes a relation scalar field when it's used in the fields of a @relation attribute
+  //The @unique constraint/attribute makes this relation 1-1. If this UNIQUE constraint was missing, the relation would be considered a 1-n relation.
+  //this side with a relation scalar field can be optional or mandatory(add or remove ? type modifier to both scalar and relation fields)
+  //in mongoDb use:  userId String @unique @db.ObjectId since referenced User Model Id is an ObjectId
+  //For MongoDB, Prisma currently uses a normalized data model design, which means that documents reference each other by ID in a similar way to relational databases
+
+  //#Referential actions 
+  //Referential actions determine what happens to a record when your application deletes or updates a related record. 
+  //Referential actions are features of foreign key constraints that exist to preserve referential integrity in your database.
+  //If you do not specify a referential action, Prisma falls back to a default:
+  //1. Optional relations: onDelete: SetNull, onUpdate: Cascade
+  //2. Mandatory relations: onDelete: Restrict, onUpdate: Cascade
+  //note, you can't use setNull for mandatory relation fields
+  //adding onDelete: Cascade inside @relation() means that deleting the User record will also delete all related Profile record(s).
+  //Supported referential actions:
+  //1. Cascade = onDelete->Deleting a referenced record will trigger the deletion of referencing record, onUpdate-> Updates the relation scalar fields if the referenced scalar fields of the dependent record are updated eg if user is deleted, delete profile(s), if user Id changes, update userId
+  //2. Restrict = onDelete->  Prevents the deletion if any referencing records exist, onUpdate->  Prevents the identifier of a referenced record from being changed.eg Users with profiles cannot be deleted, User's id cannot be changed
+  //3. NoAction = similar to Restrict but difference between the two is dependent on the database eg in mongoDB, When a record is modified or deleted, nothing is done to any related records
+  //4. SetNull = onDelete->  The scalar field of the referencing object will be set to NULL , onUpdate->When updating the identifier of a referenced object, the scalar fields of the referencing objects will be set to NULL. SetNull will only work on optional relations else runtime error since the scalar fields cannot be null eg When deleting a User, the userId will be set to NULL for all its profiles. When changing a User's id, the userId will be set to NULL for all its profiles.
+  //5. SetDefault= onDelete->  The scalar field of the referencing object will be set to the fields default value. , onUpdate->The scalar field of the referencing object will be set to the fields default value defined inside @default(value).
+}
+
+model Note {
+  id        String    @id @default(uuid())
+  noteId    Int       @unique  @default(autoincrement())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  title     String?
+  content   String?
+  deadline  DateTime?
+  files     Json? //Json type can be object | array | string | number | boolean | null. composite types/embedded documents/documents are only supported in mongoDb(use it when using mongodb). In postgress alternatives are: 1. use a diff model and create 1-1 relation or use Json type(also good for storing store data that does not have a consistent structure). See CRUD operations on a Json field under prisma client->working woth fields. Json field can be null | object | nested objects | array | array of objects i.e any form of array + objects
+  //for scalar lists(array of primites eg String[]), see prisma client->Working with scalar lists
+
+  //2. Inverse side One-to-Many(1-n) relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade) //Doesn't exist in db
+  userId String //stores the foreign key in db//Referenced field(can be any field) must be @unique or be a model Id to guarantee that there is only a single User connected to each Note. //Since there's no UNIQUE constraint on the userId column (the foreign key), you can create multiple Note records that point to the same User record. i.e 1-n relation
+  //this side can be optional or mandatory(both scalar field and relation field->use ?).
+
+  //3. Many-to-many relations
+  // Many-to-many (m-n) relations refer to relations where zero or more records on one side of the relation can be connected to zero or more records on the other side.
+  // In relational databases, m-n-relations are typically modelled via relation tables. m-n-relations can be either explicit(relation table is represented as a model in the Prisma schema) or implicit (Although the relation table exists in the underlying database, it is managed by Prisma and does not manifest in the Prisma schema.) in the Prisma schema. We recommend using implicit m-n-relations
+  //Do not require the @relation
+  //Require both models to have a single @id(no multi-field id) 
+  //You cannot use a @unique in place of an @id
+  //The fields on both sides of the relation must have a list type
+  //like other lists,  altho there is no ?, categories field is optional
+  //here, notes can have many categries and categories can be connectd to many notes
+  categories Category[]
+
+  //4. Self-relations
+  // A relation field can also reference its own model, in this case the relation is called a self-relation. Self-relations can be of any cardinality, 1-1, 1-n and m-n.
+  //in self-referential relations, set the referential action of NoAction(to both onDelete and onUpdate) in one of the @relation attributes to prevent the referential action emulations from looping infinitely. 
+
+  //eg: with
+  //   1. 1-1
+  //   successorId Int?    @unique //mongoDB: successorId String? @unique @db.ObjectId
+  //   successor   User?   @relation("BlogOwnerHistory", fields: [successorId], references: [id])
+  //   predecessor User?   @relation("BlogOwnerHistory")
+  // ->  "a user can have one or zero predecessors" (for example, Sarah is Mary's predecessor as blog owner)
+  // ->"a user can have one or zero successors" (for example, Mary is Sarah's successor as blog owner)
+  // One or both sides must be optional in 1-1 self relation
+
+  //   2. with 1-n
+  //   teacherId Int?
+  //   teacher   User?   @relation("TeacherStudents", fields: [teacherId], references: [id])
+  //   students  User[]  @relation("TeacherStudents")
+  //  -> "a user has zero or one teachers "
+  //  -> "a user can have zero or more students"
+  // 3. m-n
+  // followedBy User[]  @relation("UserFollows")
+  //   following  User[]  @relation("UserFollows")
+  //   -> "a user can be followed by zero or more users"
+  //   -> "a user can follow zero or more users"
+}
+
+//example for m-n relation
+model Category {
+  id    Int    @id @default(autoincrement())
+  name  String
+  //3. Inverse side -> Many-to-Many relation
+  notes Note[]
+}
+
+//enums must start with a letter & use the singular form
+enum Role {
+  USER
+  EDITOR
+  ADMIN
+}
+
+// available for MongoDB only// must start with a letter & spelled in PascalCase. Looks like a model
+// type NoteFile {
+//   path String
+//   filename String
+//   mimetype String
+//   size Int
+//   destination String
+// }
